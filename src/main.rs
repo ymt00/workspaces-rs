@@ -12,9 +12,7 @@ fn main() {
         return;
     }
         
-    let icons: Value = read_icon_file(args[1].to_string());
-
-    subscribe_window_event(icons);
+    subscribe_window_event(read_icon_file(args[1].to_string()));
 }
 
 fn read_icon_file(icons_path: String) -> Value{
@@ -32,19 +30,18 @@ fn subscribe_window_event(icons: Value) {
         .spawn()
         .unwrap();
 
-    {
-        let stdout: &mut ChildStdout = cmd.stdout.as_mut().unwrap();
-        let stdout_reader: BufReader<&mut ChildStdout> = BufReader::new(stdout);
-        let stdout_lines: Lines<BufReader<&mut ChildStdout>> = stdout_reader.lines();
+    
+    let stdout: &mut ChildStdout = cmd.stdout.as_mut().unwrap();
+    let stdout_reader: BufReader<&mut ChildStdout> = BufReader::new(stdout);
+    let stdout_lines: Lines<BufReader<&mut ChildStdout>> = stdout_reader.lines();
 
-        for _line in stdout_lines {            
-            for w in get_workspaces().as_array().unwrap() {
-                let mut apps: String = String::new();
+    for _line in stdout_lines {            
+        for w in get_workspaces().as_array().unwrap() {
+            let mut apps: String = String::new();
 
-                get_apps(w, &mut apps);
+            get_apps(w, &mut apps);
 
-                set_workspace_name(w["num"].to_owned(), &mut apps, icons.clone());
-            }
+            set_workspace_name(w["num"].to_owned(), &mut apps, icons.clone());
         }
     }
 
@@ -70,16 +67,18 @@ fn get_apps (w: &Value, apps: &mut std::string::String) {
     if !rep_after.is_empty() && rep_after != "null" {
         apps.push_str(&rep_after.replace(" ", "\n"))
     }
+
     get_nodes_apps(w["nodes"].to_owned(), apps);
     get_nodes_apps(w["floating_nodes"].to_owned(), apps);
 }
 
 fn get_nodes_apps(nodes: Value, apps: &mut std::string::String) {
     for n in nodes.as_array().unwrap() {
-        let mut json_app_id = json::parse(&n["app_id"].to_string()).unwrap().to_string();
+        let json_app_id = json::parse(&n["app_id"].to_string()).unwrap().to_string();
+
         if !json_app_id.is_empty() && n["app_id"].to_string() != "null"{
             if !apps.is_empty() {
-                json_app_id.insert_str(0, "\n")
+                apps.push_str("\n")
             }
             apps.push_str(&json_app_id)
         }
@@ -105,5 +104,4 @@ fn set_workspace_name(num: Value, apps: &mut std::string::String, icons: Value) 
     Command::new("swaymsg")
         .args(["rename", "workspace", "number", &num.to_string(), "to", &number])
         .output().expect("Failed to rename workspace");
-
 }
