@@ -1,9 +1,6 @@
-use std::env;
-use std::fs;
-use serde_json::Value;
-use std::process::{Child,Command,Stdio,ChildStdout,Output};
-use std::io::{BufReader,BufRead,Lines};
+use std::{borrow::Cow, env, fs, process::{Child,ChildStdout,Command,Output,Stdio}, io::{BufRead,BufReader,Lines}};
 use regex::Regex;
+use serde_json::Value;
 
 fn main() {
     let args: Vec<String>= env::args().collect();
@@ -54,15 +51,15 @@ fn get_workspaces() -> Value {
         .output()
         .expect("Failed to execute command");
 
-    let data = String::from_utf8_lossy(&output.stdout);
+    let data: Cow<'_, str> = String::from_utf8_lossy(&output.stdout);
     
     serde_json::from_str(&data).unwrap()
 }
 
-fn get_apps (w: &Value, apps: &mut std::string::String) {
-    let re = Regex::new(r"H|V|T|S|\[|\]").unwrap();
-    let rep_before = json::parse(&w["representation"].to_string()).unwrap().to_string();
-    let rep_after = re.replace_all(&rep_before, "");
+fn get_apps (w: &Value, apps: &mut String) {
+    let re: Regex = Regex::new(r"H|V|T|S|\[|\]").unwrap();
+    let rep_before: String = json::parse(&w["representation"].to_string()).unwrap().to_string();
+    let rep_after: Cow<'_, str> = re.replace_all(&rep_before, "");
     
     if !rep_after.is_empty() && rep_after != "null" {
         apps.push_str(&rep_after.replace(" ", "\n"))
@@ -72,9 +69,9 @@ fn get_apps (w: &Value, apps: &mut std::string::String) {
     get_nodes_apps(w["floating_nodes"].to_owned(), apps);
 }
 
-fn get_nodes_apps(nodes: Value, apps: &mut std::string::String) {
+fn get_nodes_apps(nodes: Value, apps: &mut String) {
     for n in nodes.as_array().unwrap() {
-        let json_app_id = json::parse(&n["app_id"].to_string()).unwrap().to_string();
+        let json_app_id: String = json::parse(&n["app_id"].to_string()).unwrap().to_string();
 
         if !json_app_id.is_empty() && n["app_id"].to_string() != "null"{
             if !apps.is_empty() {
@@ -88,14 +85,14 @@ fn get_nodes_apps(nodes: Value, apps: &mut std::string::String) {
     }
 }
 
-fn set_workspace_name(num: Value, apps: &mut std::string::String, icons: Value) {
+fn set_workspace_name(num: Value, apps: &mut String, icons: Value) {
     let mut apps_icon: String = String::new();
 
     for a in apps.lines() {
         apps_icon.push_str(&(" ".to_string()+&icons[a].to_string()));
     }
 
-    let mut number = num.to_string();
+    let mut number: String = num.to_string();
 
     if !apps_icon.is_empty() {
         number = number.to_owned()+":"+&apps_icon;
