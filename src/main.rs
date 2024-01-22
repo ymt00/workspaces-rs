@@ -16,7 +16,6 @@ fn main() {
         panic!("You must provide a path to an icons json file.");
     }
 
-    // let icons: JsonValue = get_icons(args[1].to_string());
     let icons: HashMap<String, char> = get_icons(&args[1]);
 
     // should we consider to also subscribe to event "workspace"?
@@ -33,19 +32,15 @@ fn main() {
         .lines()
         .for_each(|_l: Result<String, std::io::Error>| {
             get_workspaces().members().for_each(|w: &JsonValue| {
-                set_workspace_name(w["num"].as_u8().unwrap(), &get_apps(Node::new(w)), &icons)
+                let apps: String = get_apps(Node::new(w));
+                if apps != "" {
+                    set_workspace_name(w["num"].to_string(), &apps, &icons)
+                } else {
+                    clear_workspace_name(w["num"].to_string())
+                }
             });
         });
 }
-
-// fn get_icons(icons_path: String) -> JsonValue {
-//     json::parse(
-//         fs::read_to_string(icons_path)
-//             .expect("Unable to read icons file")
-//             .as_str(),
-//     )
-//     .unwrap()
-// }
 
 fn get_icons(icons_path: &str) -> HashMap<String, char> {
     json::parse(
@@ -60,33 +55,41 @@ fn get_icons(icons_path: &str) -> HashMap<String, char> {
 }
 
 // fn set_workspace_name(num: u8, apps: String, icons: JsonValue) {
-fn set_workspace_name(num: u8, apps: &str, icons: &HashMap<String, char>) {
-    let i: String = apps
-        .lines()
-        .map(|i: &str| {
-            if icons.contains_key(i) {
-                " ".to_owned() + &icons[i].to_string()
-            } else {
-                " \u{f22d}".to_string()
-            }
-        })
-        .collect();
-
-    let n: String;
-    if !i.is_empty() {
-        n = format!("{}:{}", num, i);
-    } else {
-        n = num.to_string();
-    }
-
+fn set_workspace_name(num: String, apps: &str, icons: &HashMap<String, char>) {
     Command::new(SWAYMSG_BIN)
         .args([
             "rename",
             "workspace",
             "number",
-            &num.to_string(),
+            &num,
             "to",
-            n.as_str(),
+            // format the workspace name
+            &format!("{}:{}", num, apps
+            .lines()
+            .map(|l: &str| {
+                let ls: &str = l.split_once(" ").unwrap_or_else(|| (l, "")).0;
+                if icons.contains_key(ls) {
+                    format!(" {}", &icons[ls])
+                    // " ".to_string() + &icons[ls].to_string()
+                } else {
+                     format!("  \u{f22d}")
+                    // "  \u{f22d}".to_string()
+                }
+            }).collect::<String>())
+        ])
+        .output()
+        .expect("Failed to rename workspace");
+}
+
+fn clear_workspace_name(num: String) {
+    Command::new(SWAYMSG_BIN)
+        .args([
+            "rename",
+            "workspace",
+            "number",
+            &num,
+            "to",
+            &num,
         ])
         .output()
         .expect("Failed to rename workspace");
