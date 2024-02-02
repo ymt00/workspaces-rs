@@ -33,10 +33,10 @@ fn main() {
         .for_each(|_l: Result<String, std::io::Error>| {
             get_workspaces().members().for_each(|w: &JsonValue| {
                 let apps: String = get_apps(Node::new(w));
-                if apps != "" {
-                    set_workspace_name(w["num"].to_string(), &apps, &icons)
-                } else {
+                if apps.is_empty() {
                     clear_workspace_name(w["num"].to_string())
+                } else {
+                    set_workspace_name(w["num"].to_string(), &apps, &icons)
                 }
             });
         });
@@ -64,18 +64,21 @@ fn set_workspace_name(num: String, apps: &str, icons: &HashMap<String, char>) {
             &num,
             "to",
             // format the workspace name
-            &format!("{}:{}", num, apps
-            .lines()
-            .map(|l: &str| {
-                let ls: &str = l.split_once(" ").unwrap_or_else(|| (l, "")).0;
-                if icons.contains_key(ls) {
-                    format!(" {}", &icons[ls])
-                    // " ".to_string() + &icons[ls].to_string()
-                } else {
-                     format!("  \u{f22d}")
-                    // "  \u{f22d}".to_string()
-                }
-            }).collect::<String>())
+            &format!(
+                "{}:{}",
+                num,
+                apps.lines()
+                    .map(|l: &str| {
+                        let ls: &str = l.split_once(' ').unwrap_or((l, "")).0;
+                        if icons.contains_key(ls) {
+                            // format!(" {}", &icons[ls])
+                            " ".to_string() + &icons[ls].to_string()
+                        } else {
+                            "  \u{f22d}".to_string()
+                        }
+                    })
+                    .collect::<String>()
+            ),
         ])
         .output()
         .expect("Failed to rename workspace");
@@ -83,14 +86,7 @@ fn set_workspace_name(num: String, apps: &str, icons: &HashMap<String, char>) {
 
 fn clear_workspace_name(num: String) {
     Command::new(SWAYMSG_BIN)
-        .args([
-            "rename",
-            "workspace",
-            "number",
-            &num,
-            "to",
-            &num,
-        ])
+        .args(["rename", "workspace", "number", &num, "to", &num])
         .output()
         .expect("Failed to rename workspace");
 }
