@@ -36,7 +36,7 @@ fn main() {
                 if apps.is_empty() {
                     clear_workspace_name(w["num"].to_string())
                 } else {
-                    set_workspace_name(w["num"].to_string(), &apps, &icons)
+                    set_workspace_name(w["num"].to_string(), format_workspace_name(&apps, &icons))
                 }
             });
         });
@@ -54,31 +54,28 @@ fn get_icons(icons_path: &str) -> HashMap<String, char> {
     .collect()
 }
 
-// fn set_workspace_name(num: u8, apps: String, icons: JsonValue) {
-fn set_workspace_name(num: String, apps: &str, icons: &HashMap<String, char>) {
+fn format_workspace_name(apps: &str, icons: &HashMap<String, char>) -> String {
+    apps.lines()
+        .map(|l: &str| {
+            let ls: &str = l.split_once(' ').unwrap_or((l, "")).0;
+            if icons.contains_key(ls) {
+                " ".to_string() + icons[ls].to_string().as_str()
+            } else {
+                "  \u{f22d}".to_string()
+            }
+        })
+        .collect::<String>()
+}
+
+fn set_workspace_name(num: String, apps: String) {
     Command::new(SWAYMSG_BIN)
         .args([
             "rename",
             "workspace",
             "number",
-            &num,
+            num.as_str(),
             "to",
-            // format the workspace name
-            &format!(
-                "{}:{}",
-                num,
-                apps.lines()
-                    .map(|l: &str| {
-                        let ls: &str = l.split_once(' ').unwrap_or((l, "")).0;
-                        if icons.contains_key(ls) {
-                            // format!(" {}", &icons[ls])
-                            " ".to_string() + &icons[ls].to_string()
-                        } else {
-                            "  \u{f22d}".to_string()
-                        }
-                    })
-                    .collect::<String>()
-            ),
+            (num.to_string() + ":" + apps.as_str()).as_str(),
         ])
         .output()
         .expect("Failed to rename workspace");
