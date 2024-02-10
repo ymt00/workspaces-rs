@@ -9,3 +9,4 @@ edition = "2021"
 regex = "1"
 json = "0.12.4"
 sway = { path = "../sway" }
+i3ipc = "0.10.1"

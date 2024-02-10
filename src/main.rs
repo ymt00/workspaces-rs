@@ -1,10 +1,8 @@
+use i3ipc::event::Event;
+use i3ipc::I3EventListener;
+use i3ipc::Subscription;
 use json::JsonValue;
-use std::{
-    collections::HashMap,
-    env, fs,
-    io::{BufRead, BufReader},
-    process::{Child, ChildStdout, Command, Stdio},
-};
+use std::{collections::HashMap, env, fs, process::Command};
 use sway::{get_apps, get_workspaces, Node};
 
 const SWAYMSG_BIN: &str = "/usr/bin/swaymsg";
@@ -17,29 +15,18 @@ fn main() {
     }
 
     let icons: HashMap<String, char> = get_icons(&args[1]);
+    let mut listener = I3EventListener::connect().expect("Failed to connect");
+    let subs = [Subscription::Workspace, Subscription::Window];
 
-    // should we consider to also subscribe to event "workspace"?
-    // also should we test on event change (new, close, focus, title, fullscreen_mode, move, floating, urgent, mark)
-    // and only rename workspaces on some event? If yes which events should we consider?
-    let mut cmd: Child = Command::new(SWAYMSG_BIN)
-        .args(["-rmt", "subscribe", "[\"window\",\"workspace\"]"])
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let stdout: &mut ChildStdout = cmd.stdout.as_mut().unwrap();
-
-    BufReader::new(stdout)
-        .lines()
-        .for_each(|_l: Result<String, std::io::Error>| {
-            get_workspaces().members().for_each(|w: &JsonValue| {
-                let apps: String = get_apps(Node::new(w));
-                if apps.is_empty() {
-                    clear_workspace_name(w["num"].to_string())
-                } else {
-                    set_workspace_name(w["num"].to_string(), format_workspace_name(&apps, &icons))
-                }
-            });
-        });
+    listener.subscribe(&subs).expect("Failed to subscribe");
+    for event in listener.listen() {
+        match event {
+            Ok(Event::WindowEvent(_w)) => set_workspaces_name(&icons),
+            Ok(Event::WorkspaceEvent(_w)) => set_workspaces_name(&icons),
+            Err(e) => println!("Error: {}", e),
+            _ => unreachable!(),
+        }
+    }
 }
 
 fn get_icons(icons_path: &str) -> HashMap<String, char> {
@@ -83,7 +70,25 @@ fn set_workspace_name(num: String, apps: String) {
 
 fn clear_workspace_name(num: String) {
     Command::new(SWAYMSG_BIN)
-        .args(["rename", "workspace", "number", &num, "to", &num])
+        .args([
+            "rename",
+            "workspace",
+            "number",
+            num.as_str(),
+            "to",
+            num.as_str(),
+        ])
         .output()
         .expect("Failed to rename workspace");
+}
+
+fn set_workspaces_name(icons: &HashMap<String, char>) {
+    get_workspaces().members().for_each(|w: &JsonValue| {
+        let apps: String = get_apps(Node::new(w));
+        if apps.is_empty() {
+            clear_workspace_name(w["num"].to_string())
+        } else {
+            set_workspace_name(w["num"].to_string(), format_workspace_name(&apps, icons))
+        }
+    });
 }
