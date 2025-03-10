@@ -4,7 +4,7 @@ use i3ipc::I3EventListener;
 use i3ipc::Subscription;
 use json::JsonValue;
 use std::{collections::HashMap, env, fs};
-use sway::{get_apps, get_workspaces, Node};
+use sway::{get_apps, get_tree, Node};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -71,16 +71,19 @@ fn set_workspace_name(conn: &mut I3Connection, num: String, apps: String) {
 }
 
 fn set_workspaces_name(conn: &mut I3Connection, icons: &HashMap<String, char>) {
-    get_workspaces().members().for_each(|w: &JsonValue| {
-        let apps: String = get_apps(Node::new(w));
-        if apps.is_empty() {
-            clear_workspace_name(conn, w["num"].to_string())
-        } else {
-            set_workspace_name(
-                conn,
-                w["num"].to_string(),
-                format_workspace_name(&apps, icons),
-            )
-        }
+    get_tree()["nodes"].members().for_each(|o: &JsonValue| {
+        o["nodes"].members().for_each(|w: &JsonValue| {
+            let apps: String = get_apps(Node::new(w));
+
+            if apps.is_empty() {
+                clear_workspace_name(conn, w["num"].to_string())
+            } else {
+                set_workspace_name(
+                    conn,
+                    w["num"].to_string(),
+                    format_workspace_name(&apps, icons),
+                )
+            }
+        });
     });
 }
