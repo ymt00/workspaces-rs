@@ -1,91 +1,71 @@
-use i3ipc::event::Event;
-use i3ipc::I3Connection;
-use i3ipc::I3EventListener;
-use i3ipc::Subscription;
-use json::JsonValue;
+use i3ipc::{event::Event, I3Connection, I3EventListener, Subscription};
 use std::{collections::HashMap, env, fs};
 use sway::{get_apps, get_tree, Node};
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() < 2 {
-        panic!("You must provide a path to an icons json file.");
+    let icons_path = env::args().nth(1)
+        .expect("Usage: workspaces <icons.json>");
+    if let Err(e) = listen(&icons_path) {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
     }
-
-    listen(args[1].as_str());
 }
 
-fn listen(icons_path: &str) {
-    let icons: HashMap<String, String> = get_icons(icons_path);
-    let mut connection: I3Connection = I3Connection::connect().expect("Failed to connect");
-    let mut listener: I3EventListener = I3EventListener::connect().expect("Failed to connect");
-    let subs: [Subscription; 2] = [Subscription::Workspace, Subscription::Window];
+fn listen(icons_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let icons = load_icons(icons_path)?;
+    let mut conn = I3Connection::connect()?;
+    let mut listener = I3EventListener::connect()?;
+    let subs = [Subscription::Workspace, Subscription::Window];
+    listener.subscribe(&subs)?;
 
-    listener.subscribe(&subs).expect("Failed to subscribe");
     for event in listener.listen() {
-        match event.unwrap() {
-            Event::WindowEvent(_w) => set_workspaces_name(&mut connection, &icons),
-            Event::WorkspaceEvent(_w) => set_workspaces_name(&mut connection, &icons),
+        match event? {
+            Event::WindowEvent(_) | Event::WorkspaceEvent(_) => {
+                update_workspaces(&mut conn, &icons)
+            }
             _ => (),
         }
     }
+    Ok(())
 }
 
-fn get_icons(icons_path: &str) -> HashMap<String, String> {
-    json::parse(
-        fs::read_to_string(icons_path)
-            .expect("Unable to read icons file")
-            .as_str(),
-    )
-    .unwrap()
-    .entries()
-    .map(|i: (&str, &JsonValue)| (i.0.to_string(), i.1.to_string()))
-    .collect()
+fn load_icons(path: &str) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+    let data = fs::read_to_string(path)?;
+    let parsed = json::parse(&data)?;
+    Ok(parsed.entries()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect())
 }
 
-fn format_workspace_name(apps: &str, icons: &HashMap<String, String>) -> String {
+fn format_workspace_apps(apps: &str, icons: &HashMap<String, String>) -> String {
     apps.lines()
-        .map(|l: &str| -> String {
-            // split the string so we can manage name of application like: "system-upgrade float 1240x890"
-            // drawbak: the name of the application itself cannot contains space
-            let ls: &str = l.split_once(" ").unwrap_or((l, "")).0;
-
-            if icons.contains_key(ls) {
-                " ".to_string() + icons[ls].to_string().as_str()
-            } else {
-                "  \u{f22d}".to_string()
-            }
+        .map(|line| {
+            let app = line.split_once(' ').map(|(a, _)| a).unwrap_or(line);
+            icons.get(app)
+                .map(|icon| format!(" {}", icon))
+                .unwrap_or_else(|| "  \u{f22d}".to_string())
         })
-        .collect::<String>()
+        .collect()
 }
 
-fn clear_workspace_name(conn: &mut I3Connection, num: String) {
-    let run_command =
-        conn.run_command(format!("rename workspace number {} to '{}'", num, num).as_str());
-    let _ = &run_command.expect("Failed to rename workspace");
+fn rename_workspace(conn: &mut I3Connection, num: &str, name: &str) {
+    let cmd = format!("rename workspace number {} to '{}'", num, name);
+    if let Err(e) = conn.run_command(&cmd) {
+        eprintln!("Failed to rename workspace {num}: {e}");
+    }
 }
 
-fn set_workspace_name(conn: &mut I3Connection, num: String, apps: String) {
-    let _ = &conn
-        .run_command(format!("rename workspace number {} to '{}:{}'", num, num, apps).as_str())
-        .expect("Failed to rename workspace");
-}
-
-fn set_workspaces_name(conn: &mut I3Connection, icons: &HashMap<String, String>) {
-    get_tree()["nodes"].members().for_each(|o: &JsonValue| {
-        o["nodes"].members().for_each(|w: &JsonValue| {
-            let apps: String = get_apps(Node::new(w));
-
+fn update_workspaces(conn: &mut I3Connection, icons: &HashMap<String, String>) {
+    for output in get_tree()["nodes"].members() {
+        for ws in output["nodes"].members() {
+            let num = ws["num"].to_string();
+            let apps = get_apps(Node::new(ws));
             if apps.is_empty() {
-                clear_workspace_name(conn, w["num"].to_string())
+                rename_workspace(conn, &num, &num);
             } else {
-                set_workspace_name(
-                    conn,
-                    w["num"].to_string(),
-                    format_workspace_name(&apps, icons),
-                )
+                let name = format!("{}:{}", num, format_workspace_apps(&apps, icons));
+                rename_workspace(conn, &num, &name);
             }
-        });
-    });
+        }
+    }
 }
