@@ -17,7 +17,7 @@ fn main() {
 }
 
 fn listen(icons_path: &str) {
-    let icons: HashMap<String, char> = get_icons(icons_path);
+    let icons: HashMap<String, String> = get_icons(icons_path);
     let mut connection: I3Connection = I3Connection::connect().expect("Failed to connect");
     let mut listener: I3EventListener = I3EventListener::connect().expect("Failed to connect");
     let subs: [Subscription; 2] = [Subscription::Workspace, Subscription::Window];
@@ -32,7 +32,7 @@ fn listen(icons_path: &str) {
     }
 }
 
-fn get_icons(icons_path: &str) -> HashMap<String, char> {
+fn get_icons(icons_path: &str) -> HashMap<String, String> {
     json::parse(
         fs::read_to_string(icons_path)
             .expect("Unable to read icons file")
@@ -40,15 +40,17 @@ fn get_icons(icons_path: &str) -> HashMap<String, char> {
     )
     .unwrap()
     .entries()
-    .map(|i: (&str, &JsonValue)| (i.0.to_string(), i.1.to_string().chars().next().unwrap()))
+    .map(|i: (&str, &JsonValue)| (i.0.to_string(), i.1.to_string()))
     .collect()
 }
 
-fn format_workspace_name(apps: &str, icons: &HashMap<String, char>) -> String {
+fn format_workspace_name(apps: &str, icons: &HashMap<String, String>) -> String {
     apps.lines()
-        .map(|l: &str| {
-            // we split by ' ' and default to the line
-            let ls: &str = l.split_once(' ').unwrap_or((l, "")).0;
+        .map(|l: &str| -> String {
+            // split the string so we can manage name of application like: "system-upgrade float 1240x890"
+            // drawbak: the name of the application itself cannot contains space
+            let ls: &str = l.split_once(" ").unwrap_or((l, "")).0;
+
             if icons.contains_key(ls) {
                 " ".to_string() + icons[ls].to_string().as_str()
             } else {
@@ -70,7 +72,7 @@ fn set_workspace_name(conn: &mut I3Connection, num: String, apps: String) {
         .expect("Failed to rename workspace");
 }
 
-fn set_workspaces_name(conn: &mut I3Connection, icons: &HashMap<String, char>) {
+fn set_workspaces_name(conn: &mut I3Connection, icons: &HashMap<String, String>) {
     get_tree()["nodes"].members().for_each(|o: &JsonValue| {
         o["nodes"].members().for_each(|w: &JsonValue| {
             let apps: String = get_apps(Node::new(w));
